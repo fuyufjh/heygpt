@@ -19,3 +19,5 @@ anyhow = "1.0"
 futures = "0.3"
 clap = { version = "4.1", features = ["derive"] }
 console = "0.15"
+rustyline = { version = "11.0", features = ["with-file-history"] }
+dirs = "4.0"

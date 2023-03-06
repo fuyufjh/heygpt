@@ -9,7 +9,6 @@ use rustyline::DefaultEditor;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::io::Write;
-use std::path::Path;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct Message {
@@ -121,7 +120,12 @@ async fn main() -> anyhow::Result<()> {
         let mut messages = vec![];
         let mut rl = DefaultEditor::new()?;
 
-        let _ = rl.load_history(READLINE_HISTORY);
+        let history_file = {
+            let mut p = dirs::home_dir().unwrap();
+            p.push(READLINE_HISTORY);
+            p.to_str().unwrap().to_owned()
+        };
+        let _ = rl.load_history(&history_file);
 
         loop {
             let readline = rl.readline(&format!("{} => ", style("user").bold().cyan()));
@@ -163,7 +167,7 @@ async fn main() -> anyhow::Result<()> {
             messages.push(response);
         }
 
-        rl.append_history(READLINE_HISTORY)?;
+        rl.append_history(&history_file)?;
     }
 
     Ok(())
