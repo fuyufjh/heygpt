@@ -1,4 +1,5 @@
 use clap::Parser;
+use console::style;
 use futures::stream::StreamExt;
 use reqwest::header::{HeaderMap, AUTHORIZATION};
 use reqwest::Client;
@@ -91,18 +92,69 @@ async fn main() -> anyhow::Result<()> {
     let openai_api_key = env::var(key).unwrap_or_else(|_| panic!("{} not set", key));
 
     let stream = !options.no_stream;
-    let prompt = options.prompt.join(" ");
 
-    let mut messages = vec![];
-    messages.push(Message {
-        role: "user".to_string(),
-        content: prompt.clone(),
-    });
+    // Enter interactive mode if prompt is empty
+    let interactive = options.prompt.is_empty();
 
+    if !interactive {
+        let prompt = options.prompt.join(" ");
+
+        let mut messages = vec![];
+        messages.push(Message {
+            role: "user".to_string(),
+            content: prompt.clone(),
+        });
+
+        let _ = complete_and_print(
+            openai_api_key.clone(),
+            options.model.clone(),
+            stream,
+            &messages,
+        )
+        .await?;
+    } else {
+        let mut messages = vec![];
+
+        loop {
+            print!("{} => ", style("user").bold().cyan());
+            std::io::stdout().flush()?;
+
+            let mut buffer = String::new();
+            std::io::stdin().read_line(&mut buffer)?;
+            messages.push(Message {
+                role: "user".to_string(),
+                content: buffer,
+            });
+
+            print!("{} => ", style("assistant").bold().green());
+            std::io::stdout().flush()?;
+
+            let response = complete_and_print(
+                openai_api_key.clone(),
+                options.model.clone(),
+                stream,
+                &messages,
+            )
+            .await?;
+
+            messages.push(response);
+        }
+    }
+
+    Ok(())
+}
+
+/// Complete the message sequence and output the response in time
+async fn complete_and_print(
+    openai_api_key: String,
+    model: String,
+    stream: bool,
+    messages: &[Message],
+) -> anyhow::Result<Message> {
     let data = OpenAIRequest {
-        model: options.model.clone(),
+        model,
         stream,
-        messages: messages.clone(),
+        messages: messages.to_vec(),
     };
 
     let mut headers = HeaderMap::new();
@@ -152,9 +204,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
-        messages.push(full_message);
-
-        Ok(())
+        Ok(full_message)
     } else {
         let response: ResponseMessage = req_builder.send().await?.json().await?;
 
@@ -162,8 +212,6 @@ async fn main() -> anyhow::Result<()> {
 
         println!("{}", &message.content);
 
-        messages.push(message);
-
-        Ok(())
+        Ok(message)
     }
 }
