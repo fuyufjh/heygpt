@@ -1,3 +1,4 @@
+use clap::Parser;
 use futures::stream::StreamExt;
 use reqwest::header::{HeaderMap, AUTHORIZATION};
 use reqwest::Client;
@@ -65,17 +66,32 @@ struct ResponseUsage {
     pub total_tokens: isize,
 }
 
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[command(about, long_about = None, trailing_var_arg=true)]
+struct Options {
+    /// Whether to use streaming API
+    #[arg(long)]
+    pub no_stream: bool,
+
+    /// The model to query
+    #[arg(long, default_value_t = String::from("gpt-3.5-turbo"))]
+    pub model: String,
+
+    /// The prompt to ask
+    pub prompt: Vec<String>,
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
-    let stream = true;
+    let options = Options::parse();
 
     // get OPENAI_API_KEY from environment variable
     let key = "OPENAI_API_KEY";
     let openai_api_key = env::var(key).unwrap_or_else(|_| panic!("{} not set", key));
 
-    // get the prompt from the user
-    let args: Vec<String> = env::args().skip(1).collect();
-    let prompt = args.join(" ");
+    let stream = !options.no_stream;
+    let prompt = options.prompt.join(" ");
 
     let mut messages = vec![];
     messages.push(Message {
@@ -84,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let data = OpenAIRequest {
-        model: "gpt-3.5-turbo".to_string(),
+        model: options.model.clone(),
         stream,
         messages: messages.clone(),
     };
