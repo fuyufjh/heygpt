@@ -146,8 +146,8 @@ async fn main() -> anyhow::Result<()> {
                     std::io::stdout().flush().unwrap();
                 }
                 Err(err) => {
-                    //println!("Error: {}", err);
                     es.close();
+                    anyhow::bail!("EventSource stream error: {}", err);
                 }
             }
         }
