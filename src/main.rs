@@ -215,14 +215,18 @@ async fn complete_and_print(
                 }
                 Ok(Event::Message(message)) => {
                     let message: ResponseStreamMessage = serde_json::from_str(&message.data)?;
-                    let delta = &message.choices[0].delta;
-                    if let Some(role) = &delta.role {
+                    let delta = message.choices.into_iter().next().unwrap().delta;
+                    if let Some(role) = delta.role {
                         //print!("{}: ", role);
-                        full_message.role.push_str(role);
+                        full_message.role.push_str(&role);
                     }
-                    if let Some(content) = &delta.content {
+                    if let Some(mut content) = delta.content {
+                        // Trick: Sometimes the response starts with a newline. Strip it here.
+                        if content.starts_with("\n") && full_message.content.is_empty() {
+                            content = content.trim_start().to_owned();
+                        }
                         print!("{}", content);
-                        full_message.content.push_str(content);
+                        full_message.content.push_str(&content);
                     }
                     std::io::stdout().flush().unwrap();
                 }
@@ -237,7 +241,12 @@ async fn complete_and_print(
     } else {
         let response: ResponseMessage = req_builder.send().await?.json().await?;
 
-        let message = response.choices[0].message.clone();
+        let mut message = response.choices[0].message.clone();
+
+        // Trick: Sometimes the response starts with a newline. Strip it here.
+        if message.content.starts_with("\n") {
+            message.content = message.content.trim_start().to_owned();
+        }
 
         println!("{}", &message.content);
 
