@@ -1,0 +1,19 @@
+[package]
+name = "heygpt"
+description = "A simple CLI tool that uses ChatGPT API to respond to messages"
+authors = ["Eric Fu"]
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "heygpt"
+path = "src/main.rs"
+
+[dependencies]
+reqwest = { version = "0.11", features = ["json"] }
+reqwest-eventsource = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.26", features = ["macros"] }
+anyhow = "1.0"
+futures = "0.3"
