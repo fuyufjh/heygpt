@@ -4,9 +4,12 @@ use futures::stream::StreamExt;
 use reqwest::header::{HeaderMap, AUTHORIZATION};
 use reqwest::Client;
 use reqwest_eventsource::{Event, EventSource};
+use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::io::Write;
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct Message {
@@ -83,6 +86,8 @@ struct Options {
     pub prompt: Vec<String>,
 }
 
+const READLINE_HISTORY: &str = ".heygpt_history";
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     let options = Options::parse();
@@ -114,16 +119,34 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     } else {
         let mut messages = vec![];
+        let mut rl = DefaultEditor::new()?;
+
+        let _ = rl.load_history(READLINE_HISTORY);
 
         loop {
-            print!("{} => ", style("user").bold().cyan());
-            std::io::stdout().flush()?;
+            let readline = rl.readline(&format!("{} => ", style("user").bold().cyan()));
+            let prompt = match readline {
+                Ok(line) => {
+                    rl.add_history_entry(line.as_str())?;
+                    line
+                }
+                Err(ReadlineError::Interrupted) => {
+                    println!("CTRL-C");
+                    break;
+                }
+                Err(ReadlineError::Eof) => {
+                    println!("CTRL-D");
+                    break;
+                }
+                Err(err) => {
+                    println!("Error: {:?}", err);
+                    break;
+                }
+            };
 
-            let mut buffer = String::new();
-            std::io::stdin().read_line(&mut buffer)?;
             messages.push(Message {
                 role: "user".to_string(),
-                content: buffer,
+                content: prompt,
             });
 
             print!("{} => ", style("assistant").bold().green());
@@ -139,6 +162,8 @@ async fn main() -> anyhow::Result<()> {
 
             messages.push(response);
         }
+
+        rl.append_history(READLINE_HISTORY)?;
     }
 
     Ok(())
