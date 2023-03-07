@@ -7,73 +7,11 @@ use reqwest::Client;
 use reqwest_eventsource::{Event, EventSource};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
-use serde::{Deserialize, Serialize};
 use std::io::Write;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-struct Message {
-    role: String,
-    content: String,
-}
+mod model;
 
-#[derive(Serialize, Deserialize, Debug)]
-struct DeltaMessage {
-    role: Option<String>,
-    content: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct OpenAIRequest {
-    model: String,
-    messages: Vec<Message>,
-    stream: bool,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    top_p: Option<f64>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ResponseChoice {
-    pub message: Message,
-    pub index: usize,
-    pub finish_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ResponseDeltaChoice {
-    pub delta: DeltaMessage,
-    pub index: usize,
-    pub finish_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ResponseStreamMessage {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
-    pub model: String,
-    pub choices: Vec<ResponseDeltaChoice>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ResponseMessage {
-    pub choices: Vec<ResponseChoice>,
-    pub created: u64,
-    pub id: String,
-    pub model: String,
-    pub object: String,
-    pub usage: ResponseUsage,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ResponseUsage {
-    pub completion_tokens: isize,
-    pub prompt_tokens: isize,
-    pub total_tokens: isize,
-}
+use model::*;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -202,7 +140,7 @@ async fn complete_and_print(
     api_key: &str,
     messages: &[Message],
 ) -> anyhow::Result<Message> {
-    let data = OpenAIRequest {
+    let data = Request {
         model: options.model.clone(),
         stream: !options.no_stream,
         messages: messages.to_vec(),
