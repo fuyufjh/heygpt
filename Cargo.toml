@@ -4,6 +4,8 @@ description = "A simple CLI tool that uses ChatGPT API to respond to messages"
 authors = ["Eric Fu"]
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/fuyufjh/heygpt"
 
 [[bin]]
 name = "heygpt"
