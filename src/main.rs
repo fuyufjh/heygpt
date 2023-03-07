@@ -79,10 +79,6 @@ struct ResponseUsage {
 #[derive(Parser, Debug)]
 #[command(about, long_about = None, trailing_var_arg=true)]
 struct Options {
-    /// OpenAI API Key
-    #[arg(long, required = true, env = "OPENAI_API_KEY", hide_env_values = true)]
-    pub api_key: String,
-
     /// Whether to use streaming API
     #[arg(long)]
     pub no_stream: bool,
@@ -90,10 +86,6 @@ struct Options {
     /// The model to query
     #[arg(long, default_value_t = String::from("gpt-3.5-turbo"))]
     pub model: String,
-
-    /// Send a 'system' message at the beginning (interactive mode only)
-    #[arg(short, long)]
-    pub system: bool,
 
     /// Sampling temperature to use, between 0 and 2.
     #[arg(
@@ -118,105 +110,98 @@ We generally recommend altering this or temperature but not both."#
 
 const READLINE_HISTORY: &str = ".heygpt_history";
 
+const OPENAI_API_KEY: &str = "OPENAI_API_KEY";
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     let options = Options::parse();
 
-    dbg!(&options);
+    // get OPENAI_API_KEY from environment variable
+    let api_key =
+        std::env::var(OPENAI_API_KEY).unwrap_or_else(|_| panic!("{} not set", OPENAI_API_KEY));
+
     // Enter interactive mode if prompt is empty
     let interactive = options.prompt.is_empty();
 
     if !interactive {
-        if options.system {
-            anyhow::bail!("system message is only supported in interactive mode");
-        }
-
-        let prompt = options.prompt.join(" ");
-
-        let mut messages = vec![];
-        messages.push(Message {
-            role: "user".to_string(),
-            content: prompt.clone(),
-        });
-
-        let _ = complete_and_print(&options, &messages).await?;
+        one_shot_mode(&options, &api_key).await?;
     } else {
-        let mut messages = vec![];
-        let mut rl = DefaultEditor::new()?;
-
-        let history_file = {
-            let mut p = dirs::home_dir().unwrap();
-            p.push(READLINE_HISTORY);
-            p.to_str().unwrap().to_owned()
-        };
-        let _ = rl.load_history(&history_file);
-
-        if options.system {
-            let readline = rl.readline(&format!("{} => ", style("system").bold().white()));
-            let prompt = match readline {
-                Ok(line) => {
-                    rl.add_history_entry(line.as_str())?;
-                    line
-                }
-                Err(ReadlineError::Interrupted) => {
-                    println!("CTRL-C");
-                    return Ok(());
-                }
-                Err(ReadlineError::Eof) => {
-                    println!("CTRL-D");
-                    return Ok(());
-                }
-                Err(err) => {
-                    bail!("Readline error: {:?}", err);
-                }
-            };
-            messages.push(Message {
-                role: "system".to_string(),
-                content: prompt,
-            });
-        }
-
-        loop {
-            let readline = rl.readline(&format!("{} => ", style("user").bold().cyan()));
-            let prompt = match readline {
-                Ok(line) => {
-                    rl.add_history_entry(line.as_str())?;
-                    line
-                }
-                Err(ReadlineError::Interrupted) => {
-                    println!("CTRL-C");
-                    break;
-                }
-                Err(ReadlineError::Eof) => {
-                    println!("CTRL-D");
-                    break;
-                }
-                Err(err) => {
-                    bail!("Readline error: {:?}", err);
-                }
-            };
-
-            messages.push(Message {
-                role: "user".to_string(),
-                content: prompt,
-            });
-
-            print!("{} => ", style("assistant").bold().green());
-            std::io::stdout().flush()?;
-
-            let response = complete_and_print(&options, &messages).await?;
-
-            messages.push(response);
-        }
-
-        rl.append_history(&history_file)?;
+        interactive_mode(&options, &api_key).await?;
     }
 
     Ok(())
 }
 
+async fn one_shot_mode(options: &Options, api_key: &str) -> anyhow::Result<()> {
+    // One-shot mode
+    let mut messages = vec![];
+
+    let prompt = options.prompt.join(" ");
+    messages.push(Message {
+        role: "user".to_string(),
+        content: prompt.clone(),
+    });
+
+    let _ = complete_and_print(&options, &api_key, &messages).await?;
+    Ok(())
+}
+
+async fn interactive_mode(options: &Options, api_key: &str) -> anyhow::Result<()> {
+    // Interactive mode
+    let mut messages = vec![];
+    let mut rl = DefaultEditor::new()?;
+
+    // Persist input history in $HOME/.heygpt_history
+    let history_file = {
+        let mut p = dirs::home_dir().unwrap();
+        p.push(READLINE_HISTORY);
+        p.to_str().unwrap().to_owned()
+    };
+    let _ = rl.load_history(&history_file);
+
+    loop {
+        let readline = rl.readline(&format!("{} => ", style("user").bold().cyan()));
+        let prompt = match readline {
+            Ok(line) => {
+                rl.add_history_entry(line.as_str())?;
+                line
+            }
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break;
+            }
+            Err(ReadlineError::Eof) => {
+                println!("CTRL-D");
+                break;
+            }
+            Err(err) => {
+                bail!("Readline error: {:?}", err);
+            }
+        };
+
+        messages.push(Message {
+            role: "user".to_string(),
+            content: prompt,
+        });
+
+        print!("{} => ", style("assistant").bold().green());
+        std::io::stdout().flush()?;
+
+        let response = complete_and_print(&options, &api_key, &messages).await?;
+
+        messages.push(response);
+    }
+
+    rl.append_history(&history_file)?;
+    Ok(())
+}
+
 /// Complete the message sequence and output the response in time
-async fn complete_and_print(options: &Options, messages: &[Message]) -> anyhow::Result<Message> {
+async fn complete_and_print(
+    options: &Options,
+    api_key: &str,
+    messages: &[Message],
+) -> anyhow::Result<Message> {
     let data = OpenAIRequest {
         model: options.model.clone(),
         stream: !options.no_stream,
@@ -228,7 +213,7 @@ async fn complete_and_print(options: &Options, messages: &[Message]) -> anyhow::
     let mut headers = HeaderMap::new();
     headers.insert(
         AUTHORIZATION,
-        format!("Bearer {}", options.api_key).parse().unwrap(),
+        format!("Bearer {}", api_key).parse().unwrap(),
     );
 
     let client = Client::new();
