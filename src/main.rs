@@ -51,6 +51,7 @@ We generally recommend altering this or temperature but not both."#
 const READLINE_HISTORY: &str = ".heygpt_history";
 
 const OPENAI_API_KEY: &str = "OPENAI_API_KEY";
+const OPENAI_API_BASE: &str = "OPENAI_API_BASE";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -62,10 +63,12 @@ async fn main() -> Result<()> {
     let api_key =
         std::env::var(OPENAI_API_KEY).map_err(|_| anyhow!("{} not set", OPENAI_API_KEY))?;
 
+    let api_base = std::env::var(OPENAI_API_BASE).unwrap_or("https://api.openai.com/v1".into());
+
     // Enter interactive mode if prompt is empty
     let interactive = options.prompt.is_empty();
 
-    let mut session = Session::new(options, api_key);
+    let mut session = Session::new(options, api_key, api_base);
     if !interactive {
         session.run_one_shot().await?;
     } else {
@@ -82,15 +85,19 @@ struct Session {
     /// OpenAI API key
     api_key: String,
 
+    /// OpenAI API base URL
+    api_base: String,
+
     /// Messages history
     messages: Vec<Message>,
 }
 
 impl Session {
-    pub fn new(options: Options, api_key: String) -> Self {
+    pub fn new(options: Options, api_key: String, api_base: String) -> Self {
         Self {
             options,
             api_key,
+            api_base,
             messages: Vec::new(),
         }
     }
@@ -178,7 +185,7 @@ impl Session {
 
         let client = Client::new();
         let req = client
-            .post("https://api.openai.com/v1/chat/completions".to_string())
+            .post(format!("{}/chat/completions", &self.api_base))
             .headers(headers)
             .json(&data);
 
