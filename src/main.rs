@@ -192,9 +192,12 @@ async fn complete_and_print(
         format!("Bearer {}", openai_api_key).parse().unwrap(),
     );
 
+    let key = "OPENAI_API_BASE";
+    let openai_api_base = env::var(key).unwrap_or("https://api.openai.com/v1".into());
+
     let client = Client::new();
     let req_builder = client
-        .post("https://api.openai.com/v1/chat/completions".to_string())
+        .post(format!("{}/chat/completions", openai_api_base))
         .headers(headers)
         .json(&data);
 
