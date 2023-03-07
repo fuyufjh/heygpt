@@ -8,7 +8,6 @@ use reqwest_eventsource::{Event, EventSource};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use serde::{Deserialize, Serialize};
-use std::env;
 use std::io::Write;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -28,6 +27,12 @@ struct OpenAIRequest {
     model: String,
     messages: Vec<Message>,
     stream: bool,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_p: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -74,6 +79,10 @@ struct ResponseUsage {
 #[derive(Parser, Debug)]
 #[command(about, long_about = None, trailing_var_arg=true)]
 struct Options {
+    /// OpenAI API Key
+    #[arg(long, required = true, env = "OPENAI_API_KEY", hide_env_values = true)]
+    pub api_key: String,
+
     /// Whether to use streaming API
     #[arg(long)]
     pub no_stream: bool,
@@ -82,12 +91,29 @@ struct Options {
     #[arg(long, default_value_t = String::from("gpt-3.5-turbo"))]
     pub model: String,
 
-    /// The prompt to ask. Leave it empty to activate interactive mode
-    pub prompt: Vec<String>,
-
     /// Send a 'system' message at the beginning (interactive mode only)
     #[arg(short, long)]
     pub system: bool,
+
+    /// Sampling temperature to use, between 0 and 2.
+    #[arg(
+        long,
+        hide_short_help = true,
+        long_help = r#"Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic.
+We generally recommend altering this or top_p but not both."#
+    )]
+    pub temperature: Option<f64>,
+
+    #[arg(
+        long,
+        hide_short_help = true,
+        long_help = r#"An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass. So 0.1 means only the tokens comprising the top 10% probability mass are considered.
+We generally recommend altering this or temperature but not both."#
+    )]
+    pub top_p: Option<f64>,
+
+    /// The prompt to ask. Leave it empty to activate interactive mode
+    pub prompt: Vec<String>,
 }
 
 const READLINE_HISTORY: &str = ".heygpt_history";
@@ -96,12 +122,7 @@ const READLINE_HISTORY: &str = ".heygpt_history";
 async fn main() -> anyhow::Result<()> {
     let options = Options::parse();
 
-    // get OPENAI_API_KEY from environment variable
-    let key = "OPENAI_API_KEY";
-    let openai_api_key = env::var(key).unwrap_or_else(|_| panic!("{} not set", key));
-
-    let stream = !options.no_stream;
-
+    dbg!(&options);
     // Enter interactive mode if prompt is empty
     let interactive = options.prompt.is_empty();
 
@@ -118,13 +139,7 @@ async fn main() -> anyhow::Result<()> {
             content: prompt.clone(),
         });
 
-        let _ = complete_and_print(
-            openai_api_key.clone(),
-            options.model.clone(),
-            stream,
-            &messages,
-        )
-        .await?;
+        let _ = complete_and_print(&options, &messages).await?;
     } else {
         let mut messages = vec![];
         let mut rl = DefaultEditor::new()?;
@@ -189,13 +204,7 @@ async fn main() -> anyhow::Result<()> {
             print!("{} => ", style("assistant").bold().green());
             std::io::stdout().flush()?;
 
-            let response = complete_and_print(
-                openai_api_key.clone(),
-                options.model.clone(),
-                stream,
-                &messages,
-            )
-            .await?;
+            let response = complete_and_print(&options, &messages).await?;
 
             messages.push(response);
         }
@@ -207,22 +216,19 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Complete the message sequence and output the response in time
-async fn complete_and_print(
-    openai_api_key: String,
-    model: String,
-    stream: bool,
-    messages: &[Message],
-) -> anyhow::Result<Message> {
+async fn complete_and_print(options: &Options, messages: &[Message]) -> anyhow::Result<Message> {
     let data = OpenAIRequest {
-        model,
-        stream,
+        model: options.model.clone(),
+        stream: !options.no_stream,
         messages: messages.to_vec(),
+        temperature: options.temperature,
+        top_p: options.top_p,
     };
 
     let mut headers = HeaderMap::new();
     headers.insert(
         AUTHORIZATION,
-        format!("Bearer {}", openai_api_key).parse().unwrap(),
+        format!("Bearer {}", options.api_key).parse().unwrap(),
     );
 
     let client = Client::new();
@@ -231,7 +237,7 @@ async fn complete_and_print(
         .headers(headers)
         .json(&data);
 
-    if stream {
+    if !options.no_stream {
         let mut full_message = Message::default();
 
         let mut es = EventSource::new(req_builder)?;
@@ -241,7 +247,6 @@ async fn complete_and_print(
                     //println!("Connection Open!")
                 }
                 Ok(Event::Message(message)) if message.data == "[DONE]" => {
-                    //dbg!(&message);
                     println!();
                     //println!("Done!");
                     break;
