@@ -1,3 +1,4 @@
+use anyhow::bail;
 use clap::Parser;
 use console::style;
 use futures::stream::StreamExt;
@@ -83,6 +84,10 @@ struct Options {
 
     /// The prompt to ask. Leave it empty to activate interactive mode
     pub prompt: Vec<String>,
+
+    /// Send a 'system' message at the beginning (interactive mode only)
+    #[arg(short, long)]
+    pub system: bool,
 }
 
 const READLINE_HISTORY: &str = ".heygpt_history";
@@ -101,6 +106,10 @@ async fn main() -> anyhow::Result<()> {
     let interactive = options.prompt.is_empty();
 
     if !interactive {
+        if options.system {
+            anyhow::bail!("system message is only supported in interactive mode");
+        }
+
         let prompt = options.prompt.join(" ");
 
         let mut messages = vec![];
@@ -127,6 +136,31 @@ async fn main() -> anyhow::Result<()> {
         };
         let _ = rl.load_history(&history_file);
 
+        if options.system {
+            let readline = rl.readline(&format!("{} => ", style("system").bold().white()));
+            let prompt = match readline {
+                Ok(line) => {
+                    rl.add_history_entry(line.as_str())?;
+                    line
+                }
+                Err(ReadlineError::Interrupted) => {
+                    println!("CTRL-C");
+                    return Ok(());
+                }
+                Err(ReadlineError::Eof) => {
+                    println!("CTRL-D");
+                    return Ok(());
+                }
+                Err(err) => {
+                    bail!("Readline error: {:?}", err);
+                }
+            };
+            messages.push(Message {
+                role: "system".to_string(),
+                content: prompt,
+            });
+        }
+
         loop {
             let readline = rl.readline(&format!("{} => ", style("user").bold().cyan()));
             let prompt = match readline {
@@ -143,8 +177,7 @@ async fn main() -> anyhow::Result<()> {
                     break;
                 }
                 Err(err) => {
-                    println!("Error: {:?}", err);
-                    break;
+                    bail!("Readline error: {:?}", err);
                 }
             };
 
