@@ -81,7 +81,7 @@ struct Options {
     #[arg(long, default_value_t = String::from("gpt-3.5-turbo"))]
     pub model: String,
 
-    /// The prompt to ask
+    /// The prompt to ask. Leave it empty to activate interactive mode
     pub prompt: Vec<String>,
 }
 
