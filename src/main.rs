@@ -3,7 +3,7 @@ use clap::Parser;
 use console::style;
 use futures::stream::StreamExt;
 use reqwest::header::{HeaderMap, AUTHORIZATION};
-use reqwest::Client;
+use reqwest::{Client, RequestBuilder};
 use reqwest_eventsource::{Event, EventSource};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -13,7 +13,7 @@ mod model;
 
 use model::*;
 
-/// Simple program to greet a person
+/// Command-line options
 #[derive(Parser, Debug)]
 #[command(about, long_about = None, trailing_var_arg=true)]
 struct Options {
@@ -34,6 +34,7 @@ We generally recommend altering this or top_p but not both."#
     )]
     pub temperature: Option<f64>,
 
+    /// Probability of nucleus sampling
     #[arg(
         long,
         hide_short_help = true,
@@ -61,109 +62,131 @@ async fn main() -> anyhow::Result<()> {
     // Enter interactive mode if prompt is empty
     let interactive = options.prompt.is_empty();
 
+    let mut session = Session::new(options, api_key);
     if !interactive {
-        one_shot_mode(&options, &api_key).await?;
+        session.run_one_shot().await?;
     } else {
-        interactive_mode(&options, &api_key).await?;
+        session.run_interactive().await?;
     }
 
     Ok(())
 }
 
-async fn one_shot_mode(options: &Options, api_key: &str) -> anyhow::Result<()> {
-    // One-shot mode
-    let mut messages = vec![];
+struct Session {
+    /// Command-line options
+    options: Options,
 
-    let prompt = options.prompt.join(" ");
-    messages.push(Message {
-        role: "user".to_string(),
-        content: prompt.clone(),
-    });
+    /// OpenAI API key
+    api_key: String,
 
-    let _ = complete_and_print(&options, &api_key, &messages).await?;
-    Ok(())
+    /// Messages history
+    messages: Vec<Message>,
 }
 
-async fn interactive_mode(options: &Options, api_key: &str) -> anyhow::Result<()> {
-    // Interactive mode
-    let mut messages = vec![];
-    let mut rl = DefaultEditor::new()?;
+impl Session {
+    pub fn new(options: Options, api_key: String) -> Self {
+        Self {
+            options,
+            api_key,
+            messages: Vec::new(),
+        }
+    }
 
-    // Persist input history in $HOME/.heygpt_history
-    let history_file = {
-        let mut p = dirs::home_dir().unwrap();
-        p.push(READLINE_HISTORY);
-        p.to_str().unwrap().to_owned()
-    };
-    let _ = rl.load_history(&history_file);
-
-    loop {
-        let readline = rl.readline(&format!("{} => ", style("user").bold().cyan()));
-        let prompt = match readline {
-            Ok(line) => {
-                rl.add_history_entry(line.as_str())?;
-                line
-            }
-            Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C");
-                break;
-            }
-            Err(ReadlineError::Eof) => {
-                println!("CTRL-D");
-                break;
-            }
-            Err(err) => {
-                bail!("Readline error: {:?}", err);
-            }
-        };
-
-        messages.push(Message {
+    pub async fn run_one_shot(&mut self) -> anyhow::Result<()> {
+        let prompt = self.options.prompt.join(" ");
+        self.messages.push(Message {
             role: "user".to_string(),
-            content: prompt,
+            content: prompt.clone(),
         });
 
-        print!("{} => ", style("assistant").bold().green());
-        std::io::stdout().flush()?;
-
-        let response = complete_and_print(&options, &api_key, &messages).await?;
-
-        messages.push(response);
+        let _ = self.complete_and_print().await?;
+        Ok(())
     }
 
-    rl.append_history(&history_file)?;
-    Ok(())
-}
+    pub async fn run_interactive(&mut self) -> anyhow::Result<()> {
+        let mut messages = vec![];
+        let mut rl = DefaultEditor::new()?;
 
-/// Complete the message sequence and output the response in time
-async fn complete_and_print(
-    options: &Options,
-    api_key: &str,
-    messages: &[Message],
-) -> anyhow::Result<Message> {
-    let data = Request {
-        model: options.model.clone(),
-        stream: !options.no_stream,
-        messages: messages.to_vec(),
-        temperature: options.temperature,
-        top_p: options.top_p,
-    };
+        // Persist input history in `$HOME/.heygpt_history`
+        let history_file = {
+            let mut p = dirs::home_dir().unwrap();
+            p.push(READLINE_HISTORY);
+            p.to_str().unwrap().to_owned()
+        };
+        let _ = rl.load_history(&history_file);
 
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        AUTHORIZATION,
-        format!("Bearer {}", api_key).parse().unwrap(),
-    );
+        loop {
+            let readline = rl.readline(&format!("{} => ", style("user").bold().cyan()));
+            let prompt = match readline {
+                Ok(line) => {
+                    rl.add_history_entry(line.as_str())?;
+                    line
+                }
+                Err(ReadlineError::Interrupted) => {
+                    println!("CTRL-C");
+                    break;
+                }
+                Err(ReadlineError::Eof) => {
+                    println!("CTRL-D");
+                    break;
+                }
+                Err(err) => {
+                    bail!("Readline error: {:?}", err);
+                }
+            };
 
-    let client = Client::new();
-    let req_builder = client
-        .post("https://api.openai.com/v1/chat/completions".to_string())
-        .headers(headers)
-        .json(&data);
+            messages.push(Message {
+                role: "user".to_string(),
+                content: prompt,
+            });
 
-    if !options.no_stream {
+            print!("{} => ", style("assistant").bold().green());
+            std::io::stdout().flush()?;
+
+            let response = self.complete_and_print().await?;
+
+            messages.push(response);
+        }
+
+        rl.append_history(&history_file)?;
+        Ok(())
+    }
+
+    /// Complete the message sequence and returns the next message.
+    /// Meanwhile, output the response to stdout.
+    async fn complete_and_print(&self) -> anyhow::Result<Message> {
+        // Build the request
+        let data = Request {
+            model: self.options.model.clone(),
+            stream: !self.options.no_stream,
+            messages: self.messages.to_vec(),
+            temperature: self.options.temperature,
+            top_p: self.options.top_p,
+        };
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            format!("Bearer {}", self.api_key).parse().unwrap(),
+        );
+
+        let client = Client::new();
+        let req = client
+            .post("https://api.openai.com/v1/chat/completions".to_string())
+            .headers(headers)
+            .json(&data);
+
+        if !self.options.no_stream {
+            self.do_stream_request(req).await
+        } else {
+            self.do_non_stream_request(req).await
+        }
+    }
+
+    async fn do_stream_request(&self, req: RequestBuilder) -> anyhow::Result<Message> {
         let mut full_message = Message::default();
 
-        let mut es = EventSource::new(req_builder)?;
+        let mut es = EventSource::new(req)?;
         while let Some(event) = es.next().await {
             match event {
                 Ok(Event::Open) => {
@@ -199,8 +222,10 @@ async fn complete_and_print(
         }
 
         Ok(full_message)
-    } else {
-        let response: ResponseMessage = req_builder.send().await?.json().await?;
+    }
+
+    async fn do_non_stream_request(&self, req: RequestBuilder) -> anyhow::Result<Message> {
+        let response: ResponseMessage = req.send().await?.json().await?;
 
         let mut message = response.choices[0].message.clone();
 
