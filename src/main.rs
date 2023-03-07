@@ -1,7 +1,8 @@
-use anyhow::bail;
+use anyhow::{anyhow, bail, Result};
 use clap::Parser;
 use console::style;
 use futures::stream::StreamExt;
+use log::{debug, trace};
 use reqwest::header::{HeaderMap, AUTHORIZATION};
 use reqwest::{Client, RequestBuilder};
 use reqwest_eventsource::{Event, EventSource};
@@ -52,12 +53,14 @@ const READLINE_HISTORY: &str = ".heygpt_history";
 const OPENAI_API_KEY: &str = "OPENAI_API_KEY";
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
+    env_logger::init();
+
     let options = Options::parse();
 
     // get OPENAI_API_KEY from environment variable
     let api_key =
-        std::env::var(OPENAI_API_KEY).unwrap_or_else(|_| panic!("{} not set", OPENAI_API_KEY));
+        std::env::var(OPENAI_API_KEY).map_err(|_| anyhow!("{} not set", OPENAI_API_KEY))?;
 
     // Enter interactive mode if prompt is empty
     let interactive = options.prompt.is_empty();
@@ -92,7 +95,7 @@ impl Session {
         }
     }
 
-    pub async fn run_one_shot(&mut self) -> anyhow::Result<()> {
+    pub async fn run_one_shot(&mut self) -> Result<()> {
         let prompt = self.options.prompt.join(" ");
         self.messages.push(Message {
             role: "user".to_string(),
@@ -103,8 +106,7 @@ impl Session {
         Ok(())
     }
 
-    pub async fn run_interactive(&mut self) -> anyhow::Result<()> {
-        let mut messages = vec![];
+    pub async fn run_interactive(&mut self) -> Result<()> {
         let mut rl = DefaultEditor::new()?;
 
         // Persist input history in `$HOME/.heygpt_history`
@@ -135,7 +137,7 @@ impl Session {
                 }
             };
 
-            messages.push(Message {
+            self.messages.push(Message {
                 role: "user".to_string(),
                 content: prompt,
             });
@@ -145,7 +147,7 @@ impl Session {
 
             let response = self.complete_and_print().await?;
 
-            messages.push(response);
+            self.messages.push(response);
         }
 
         rl.append_history(&history_file)?;
@@ -154,7 +156,7 @@ impl Session {
 
     /// Complete the message sequence and returns the next message.
     /// Meanwhile, output the response to stdout.
-    async fn complete_and_print(&self) -> anyhow::Result<Message> {
+    async fn complete_and_print(&self) -> Result<Message> {
         // Build the request
         let data = Request {
             model: self.options.model.clone(),
@@ -176,6 +178,8 @@ impl Session {
             .headers(headers)
             .json(&data);
 
+        debug!("Request body: {:?}", &data);
+
         if !self.options.no_stream {
             self.do_stream_request(req).await
         } else {
@@ -183,25 +187,25 @@ impl Session {
         }
     }
 
-    async fn do_stream_request(&self, req: RequestBuilder) -> anyhow::Result<Message> {
+    async fn do_stream_request(&self, req: RequestBuilder) -> Result<Message> {
         let mut full_message = Message::default();
 
         let mut es = EventSource::new(req)?;
         while let Some(event) = es.next().await {
             match event {
                 Ok(Event::Open) => {
-                    //println!("Connection Open!")
+                    debug!("response stream opened")
                 }
                 Ok(Event::Message(message)) if message.data == "[DONE]" => {
+                    debug!("response stream ended with [DONE]");
                     println!();
-                    //println!("Done!");
                     break;
                 }
                 Ok(Event::Message(message)) => {
+                    trace!("response stream message: {:?}", &message);
                     let message: ResponseStreamMessage = serde_json::from_str(&message.data)?;
                     let delta = message.choices.into_iter().next().unwrap().delta;
                     if let Some(role) = delta.role {
-                        //print!("{}: ", role);
                         full_message.role.push_str(&role);
                     }
                     if let Some(mut content) = delta.content {
@@ -216,16 +220,20 @@ impl Session {
                 }
                 Err(err) => {
                     es.close();
-                    anyhow::bail!("EventSource stream error: {}", err);
+                    bail!("EventSource stream error: {}", err);
                 }
             }
         }
 
+        debug!("response stream full message: {:?}", &full_message);
+
         Ok(full_message)
     }
 
-    async fn do_non_stream_request(&self, req: RequestBuilder) -> anyhow::Result<Message> {
+    async fn do_non_stream_request(&self, req: RequestBuilder) -> Result<Message> {
         let response: ResponseMessage = req.send().await?.json().await?;
+
+        debug!("response message: {:?}", &response);
 
         let mut message = response.choices[0].message.clone();
 
