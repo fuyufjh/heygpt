@@ -97,9 +97,10 @@ impl Session {
 
     pub async fn run_one_shot(&mut self) -> Result<()> {
         let prompt = self.options.prompt.join(" ");
+
         self.messages.push(Message {
             role: "user".to_string(),
-            content: prompt.clone(),
+            content: prompt,
         });
 
         let _ = self.complete_and_print().await?;
