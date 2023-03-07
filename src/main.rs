@@ -121,6 +121,9 @@ impl Session {
             let readline = rl.readline(&format!("{} => ", style("user").bold().cyan()));
             let prompt = match readline {
                 Ok(line) => {
+                    if line.is_empty() {
+                        continue; // ignore empty input
+                    }
                     rl.add_history_entry(line.as_str())?;
                     line
                 }
