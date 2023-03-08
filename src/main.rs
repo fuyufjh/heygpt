@@ -4,7 +4,7 @@ use console::style;
 use futures::stream::StreamExt;
 use log::{debug, trace};
 use reqwest::header::{HeaderMap, AUTHORIZATION};
-use reqwest::{Client, RequestBuilder};
+use reqwest::{Client, RequestBuilder, StatusCode};
 use reqwest_eventsource::{Event, EventSource};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -264,10 +264,17 @@ impl Session {
     }
 
     async fn do_non_stream_request(&mut self, req: RequestBuilder) -> Result<Message> {
-        let response: ResponseMessage = req.send().await?.json().await?;
-        debug!("response message: {:?}", &response);
+        let response = req.send().await?;
 
         self.spinner = None;
+
+        if response.status() != StatusCode::OK {
+            let r: WrappedApiError = response.json().await?;
+            bail!("API Error: {}: {}", r.error.r#type, r.error.message);
+        }
+
+        let response: ResponseMessage = response.json().await?;
+        debug!("response message: {:?}", &response);
 
         let mut message = response.choices[0].message.clone();
 

@@ -25,7 +25,6 @@ pub struct Request {
     pub top_p: Option<f64>,
 }
 
-// TODO: handle error message
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ResponseMessage {
     pub choices: Vec<ResponseChoice>,
@@ -64,4 +63,19 @@ pub struct ResponseDeltaChoice {
     pub delta: DeltaMessage,
     pub index: usize,
     pub finish_reason: Option<String>,
+}
+
+/// OpenAI API returns error object on failure
+#[derive(Debug, Deserialize)]
+pub struct ApiError {
+    pub message: String,
+    pub r#type: String,
+    pub param: Option<serde_json::Value>,
+    pub code: Option<serde_json::Value>,
+}
+
+/// Wrapper to deserialize the error object nested in "error" JSON key
+#[derive(Debug, Deserialize)]
+pub struct WrappedApiError {
+    pub error: ApiError,
 }
