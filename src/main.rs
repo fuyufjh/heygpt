@@ -308,9 +308,9 @@ impl Session {
         match cmd {
             "?" | "help" => {
                 println!("{}", style("Available commands:").bold());
-                println!("  \\?, \\help: Show this help");
-                println!("  \\b, \\back: Retract and back to the last user message");
-                println!("  \\h, \\history: View current conversation history");
+                println!("  \\?, \\help     Show this help");
+                println!("  \\b, \\back     Retract and back to the last user message");
+                println!("  \\h, \\history  View current conversation history");
             }
             "b" | "back" => match self.retract() {
                 Ok(()) => println!("Retracted last message"),
