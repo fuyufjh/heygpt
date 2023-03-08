@@ -25,3 +25,4 @@ rustyline = { version = "11.0", features = ["with-file-history"] }
 dirs = "4.0"
 log = "0.4"
 env_logger = "0.10"
+spinners = "4.1"

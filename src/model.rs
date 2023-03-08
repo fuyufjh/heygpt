@@ -25,6 +25,7 @@ pub struct Request {
     pub top_p: Option<f64>,
 }
 
+// TODO: handle error message
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ResponseMessage {
     pub choices: Vec<ResponseChoice>,

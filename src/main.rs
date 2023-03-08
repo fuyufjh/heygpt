@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
-use console::style;
+use console::{style, Term};
 use futures::stream::StreamExt;
 use log::{debug, trace};
 use reqwest::header::{HeaderMap, AUTHORIZATION};
@@ -8,6 +8,7 @@ use reqwest::{Client, RequestBuilder};
 use reqwest_eventsource::{Event, EventSource};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use spinners::{Spinner, Spinners};
 use std::io::Write;
 
 mod model;
@@ -65,11 +66,8 @@ async fn main() -> Result<()> {
 
     let api_base = std::env::var(OPENAI_API_BASE).unwrap_or("https://api.openai.com/v1".into());
 
-    // Enter interactive mode if prompt is empty
-    let interactive = options.prompt.is_empty();
-
     let mut session = Session::new(options, api_key, api_base);
-    if !interactive {
+    if !session.is_interactive() {
         session.run_one_shot().await?;
     } else {
         session.run_interactive().await?;
@@ -100,6 +98,11 @@ impl Session {
             api_base,
             messages: Vec::new(),
         }
+    }
+
+    pub fn is_interactive(&self) -> bool {
+        // Enter interactive mode if prompt is empty
+        self.options.prompt.is_empty()
     }
 
     pub async fn run_one_shot(&mut self) -> Result<()> {
@@ -153,9 +156,6 @@ impl Session {
                 content: prompt,
             });
 
-            print!("{} => ", style("assistant").bold().green());
-            std::io::stdout().flush()?;
-
             let response = self.complete_and_print().await?;
 
             self.messages.push(response);
@@ -201,11 +201,15 @@ impl Session {
     async fn do_stream_request(&self, req: RequestBuilder) -> Result<Message> {
         let mut full_message = Message::default();
 
+        let mut sp = Spinner::new(Spinners::SimpleDotsScrolling, "".into());
+
         let mut es = EventSource::new(req)?;
         while let Some(event) = es.next().await {
             match event {
                 Ok(Event::Open) => {
-                    debug!("response stream opened")
+                    debug!("response stream opened");
+                    sp.stop();
+                    Term::stdout().clear_line().unwrap();
                 }
                 Ok(Event::Message(message)) if message.data == "[DONE]" => {
                     debug!("response stream ended with [DONE]");
@@ -218,6 +222,11 @@ impl Session {
                     let delta = message.choices.into_iter().next().unwrap().delta;
                     if let Some(role) = delta.role {
                         full_message.role.push_str(&role);
+
+                        if self.is_interactive() {
+                            print!("{} => ", style(role).bold().green());
+                            std::io::stdout().flush()?;
+                        }
                     }
                     if let Some(mut content) = delta.content {
                         // Trick: Sometimes the response starts with a newline. Strip it here.
@@ -242,9 +251,14 @@ impl Session {
     }
 
     async fn do_non_stream_request(&self, req: RequestBuilder) -> Result<Message> {
-        let response: ResponseMessage = req.send().await?.json().await?;
+        // TODO: do not show spinner if output is redirected
+        let mut sp = Spinner::new(Spinners::SimpleDotsScrolling, "".into());
 
+        let response: ResponseMessage = req.send().await?.json().await?;
         debug!("response message: {:?}", &response);
+
+        sp.stop();
+        Term::stdout().clear_line().unwrap();
 
         let mut message = response.choices[0].message.clone();
 
@@ -253,7 +267,11 @@ impl Session {
             message.content = message.content.trim_start().to_owned();
         }
 
+        if self.is_interactive() {
+            print!("{} => ", style(&message.role).bold().green());
+        }
         println!("{}", &message.content);
+        std::io::stdout().flush()?;
 
         Ok(message)
     }
