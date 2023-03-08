@@ -58,3 +58,17 @@ heygpt "please translate this poem to English:
 > 举头望明月，
 > 低头思故乡。"
 ```
+
+## Advanced
+
+### Commands in interactive mode
+
+Enter `\?` to see available commands:
+
+```
+user => \?
+Available commands:
+  \?, \help: Show this help
+  \b, \back: Retract and back to the last user message
+  \h, \history: View current conversation history
+```

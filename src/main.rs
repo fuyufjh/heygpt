@@ -162,6 +162,12 @@ impl Session {
                 }
             };
 
+            if prompt.starts_with("\\") {
+                let cmd = &prompt[1..];
+                self.run_command(cmd);
+                continue;
+            }
+
             self.messages.push(Message {
                 role: "user".to_string(),
                 content: prompt,
@@ -172,7 +178,7 @@ impl Session {
                 Err(err) => {
                     let last_msg = self.messages.pop(); // remove the last message
                     assert!(last_msg.is_some());
-                    println!("{}: {err}", style("Error").bold().red());
+                    println!("{}: {err}", style("ERROR").bold().red());
                 }
             }
         }
@@ -296,5 +302,46 @@ impl Session {
         std::io::stdout().flush()?;
 
         Ok(message)
+    }
+
+    fn run_command(&mut self, cmd: &str) {
+        match cmd {
+            "?" | "help" => {
+                println!("{}", style("Available commands:").bold());
+                println!("  \\?, \\help: Show this help");
+                println!("  \\b, \\back: Retract and back to the last user message");
+                println!("  \\h, \\history: View current conversation history");
+            }
+            "b" | "back" => match self.retract() {
+                Ok(()) => println!("Retracted last message"),
+                Err(err) => println!("{}: {err}", style("ERROR").bold().red()),
+            },
+            "h" | "history" => {
+                println!("{}", style("History:").bold());
+                for (i, message) in self.messages.iter().enumerate() {
+                    println!("[{}] {} => {}", i, message.role, message.content);
+                }
+            }
+            _ => {
+                println!("Unknown command: \\{cmd}. Enter '\\?' for help.");
+            }
+        }
+    }
+
+    /// Retract the last message sent by user, as well as the subsequent messages
+    fn retract(&mut self) -> Result<()> {
+        let mut count = 0usize;
+        for message in self.messages.iter().rev() {
+            count += 1;
+            if message.role == "user" {
+                break;
+            }
+        }
+        if count == 0 {
+            bail!("No message to retract");
+        } else {
+            self.messages.truncate(self.messages.len() - count);
+            Ok(())
+        }
     }
 }
