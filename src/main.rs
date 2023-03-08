@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
-use console::{style, Term};
+use console::style;
 use futures::stream::StreamExt;
 use log::{debug, trace};
 use reqwest::header::{HeaderMap, AUTHORIZATION};
@@ -8,12 +8,13 @@ use reqwest::{Client, RequestBuilder};
 use reqwest_eventsource::{Event, EventSource};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
-use spinners::{Spinner, Spinners};
 use std::io::Write;
 
 mod model;
+mod spinner;
 
 use model::*;
+use spinner::Spinner;
 
 /// Command-line options
 #[derive(Parser, Debug)]
@@ -66,7 +67,9 @@ async fn main() -> Result<()> {
 
     let api_base = std::env::var(OPENAI_API_BASE).unwrap_or("https://api.openai.com/v1".into());
 
-    let mut session = Session::new(options, api_key, api_base);
+    let is_stdout = atty::is(atty::Stream::Stdout);
+
+    let mut session = Session::new(options, api_key, api_base, is_stdout);
     if !session.is_interactive() {
         session.run_one_shot().await?;
     } else {
@@ -88,15 +91,23 @@ struct Session {
 
     /// Messages history
     messages: Vec<Message>,
+
+    /// Whether stdout is a TTY
+    is_stdout: bool,
+
+    /// Spinner holder
+    spinner: Option<Spinner>,
 }
 
 impl Session {
-    pub fn new(options: Options, api_key: String, api_base: String) -> Self {
+    pub fn new(options: Options, api_key: String, api_base: String, is_stdout: bool) -> Self {
         Self {
             options,
             api_key,
             api_base,
+            is_stdout,
             messages: Vec::new(),
+            spinner: None,
         }
     }
 
@@ -167,7 +178,7 @@ impl Session {
 
     /// Complete the message sequence and returns the next message.
     /// Meanwhile, output the response to stdout.
-    async fn complete_and_print(&self) -> Result<Message> {
+    async fn complete_and_print(&mut self) -> Result<Message> {
         // Build the request
         let data = Request {
             model: self.options.model.clone(),
@@ -191,6 +202,11 @@ impl Session {
 
         debug!("Request body: {:?}", &data);
 
+        // Show spinner if stdout is not redirected
+        if self.is_stdout {
+            self.spinner = Some(Spinner::new());
+        }
+
         if !self.options.no_stream {
             self.do_stream_request(req).await
         } else {
@@ -198,18 +214,15 @@ impl Session {
         }
     }
 
-    async fn do_stream_request(&self, req: RequestBuilder) -> Result<Message> {
+    async fn do_stream_request(&mut self, req: RequestBuilder) -> Result<Message> {
         let mut full_message = Message::default();
-
-        let mut sp = Spinner::new(Spinners::SimpleDotsScrolling, "".into());
 
         let mut es = EventSource::new(req)?;
         while let Some(event) = es.next().await {
             match event {
                 Ok(Event::Open) => {
                     debug!("response stream opened");
-                    sp.stop();
-                    Term::stdout().clear_line().unwrap();
+                    self.spinner = None;
                 }
                 Ok(Event::Message(message)) if message.data == "[DONE]" => {
                     debug!("response stream ended with [DONE]");
@@ -250,15 +263,11 @@ impl Session {
         Ok(full_message)
     }
 
-    async fn do_non_stream_request(&self, req: RequestBuilder) -> Result<Message> {
-        // TODO: do not show spinner if output is redirected
-        let mut sp = Spinner::new(Spinners::SimpleDotsScrolling, "".into());
-
+    async fn do_non_stream_request(&mut self, req: RequestBuilder) -> Result<Message> {
         let response: ResponseMessage = req.send().await?.json().await?;
         debug!("response message: {:?}", &response);
 
-        sp.stop();
-        Term::stdout().clear_line().unwrap();
+        self.spinner = None;
 
         let mut message = response.choices[0].message.clone();
 
