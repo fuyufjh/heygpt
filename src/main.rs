@@ -167,9 +167,14 @@ impl Session {
                 content: prompt,
             });
 
-            let response = self.complete_and_print().await?;
-
-            self.messages.push(response);
+            match self.complete_and_print().await {
+                Ok(response) => self.messages.push(response),
+                Err(err) => {
+                    let last_msg = self.messages.pop(); // remove the last message
+                    assert!(last_msg.is_some());
+                    println!("{}: {err}", style("Error").bold().red());
+                }
+            }
         }
 
         rl.append_history(&history_file)?;
@@ -219,10 +224,10 @@ impl Session {
 
         let mut es = EventSource::new(req)?;
         while let Some(event) = es.next().await {
+            self.spinner = None;
             match event {
                 Ok(Event::Open) => {
                     debug!("response stream opened");
-                    self.spinner = None;
                 }
                 Ok(Event::Message(message)) if message.data == "[DONE]" => {
                     debug!("response stream ended with [DONE]");
@@ -238,7 +243,7 @@ impl Session {
 
                         if self.is_interactive() {
                             print!("{} => ", style(role).bold().green());
-                            std::io::stdout().flush()?;
+                            std::io::stdout().flush().unwrap();
                         }
                     }
                     if let Some(mut content) = delta.content {
@@ -253,7 +258,8 @@ impl Session {
                 }
                 Err(err) => {
                     es.close();
-                    bail!("EventSource stream error: {}", err);
+                    debug!("EventSource stream error: {}", err);
+                    return Err(err.into());
                 }
             }
         }
@@ -270,7 +276,7 @@ impl Session {
 
         if response.status() != StatusCode::OK {
             let r: WrappedApiError = response.json().await?;
-            bail!("API Error: {}: {}", r.error.r#type, r.error.message);
+            return Err(anyhow!("{}: {}", r.error.r#type, r.error.message));
         }
 
         let response: ResponseMessage = response.json().await?;
