@@ -6,16 +6,16 @@ A simple common-line interface for [ChatGPT API](https://platform.openai.com/doc
 - 💡 One-shot mode to get a quick answer
 - 🤖 Interactive mode to have a conversation
 
-<img width="1022" alt="Screen Shot 2023-03-07 at 09 30 53" src="https://user-images.githubusercontent.com/10192522/223295925-00eed881-cdfc-4f46-9510-1e0bd1c99e60.png">
+<img width="1022" alt="screenshot" src="https://user-images.githubusercontent.com/10192522/223295925-00eed881-cdfc-4f46-9510-1e0bd1c99e60.png">
 
 **[Demo (YouTube)](https://youtu.be/Edqts2ff1Y0)**
 
 ## Quickstart
 
-Install to `$HOME/.cargo/bin/` via cargo:
+Install latest release version to `$HOME/.cargo/bin/` via cargo:
 
 ```bash
-cargo install --path .
+cargo install heygpt
 ```
 
 You'll need a OpenAI API key (you can get one [here](https://platform.openai.com/account/api-keys)), and you'll need to export your API Key as an environment variable:
