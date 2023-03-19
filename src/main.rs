@@ -46,8 +46,16 @@ We generally recommend altering this or temperature but not both."#
     )]
     pub top_p: Option<f64>,
 
+    #[arg(
+        long,
+        hide_short_help = true,
+        long_help = r#"System prompt passed to chatgpt."#
+    )]
+    pub system_prompt: Option<String>,
+
     /// The prompt to ask. Leave it empty to activate interactive mode
     pub prompt: Vec<String>,
+
 }
 
 const READLINE_HISTORY: &str = ".heygpt_history";
@@ -101,12 +109,20 @@ struct Session {
 
 impl Session {
     pub fn new(options: Options, api_key: String, api_base: String, is_stdout: bool) -> Self {
+        let mut messages = Vec::new();
+        if let Some(p) = options.system_prompt.clone() {
+            messages.push(Message {
+                role: "system".to_string(),
+                content: p,
+            });
+        }
+
         Self {
             options,
             api_key,
             api_base,
             is_stdout,
-            messages: Vec::new(),
+            messages,
             spinner: None,
         }
     }
