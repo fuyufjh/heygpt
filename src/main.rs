@@ -46,13 +46,13 @@ We generally recommend altering this or temperature but not both."#
     )]
     pub top_p: Option<f64>,
 
+    /// System prompt
     #[arg(
         long,
-        hide_short_help = true,
         default_missing_value = "",
         num_args(0..=1),
         require_equals = true,
-        long_help = "System prompt passed to chatgpt."
+        long_help = "System prompt passed to ChatGPT."
     )]
     pub system: Option<String>,
 
