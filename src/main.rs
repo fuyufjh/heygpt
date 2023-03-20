@@ -7,7 +7,7 @@ use reqwest::header::{HeaderMap, AUTHORIZATION};
 use reqwest::{Client, RequestBuilder, StatusCode};
 use reqwest_eventsource::{Event, EventSource};
 use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
+use rustyline::{DefaultEditor, Editor};
 use std::io::Write;
 
 mod model;
@@ -49,13 +49,15 @@ We generally recommend altering this or temperature but not both."#
     #[arg(
         long,
         hide_short_help = true,
-        long_help = r#"System prompt passed to chatgpt."#
+        default_missing_value = "",
+        num_args(0..=1),
+        require_equals = true,
+        long_help = "System prompt passed to chatgpt."
     )]
     pub system_prompt: Option<String>,
 
     /// The prompt to ask. Leave it empty to activate interactive mode
     pub prompt: Vec<String>,
-
 }
 
 const READLINE_HISTORY: &str = ".heygpt_history";
@@ -109,20 +111,12 @@ struct Session {
 
 impl Session {
     pub fn new(options: Options, api_key: String, api_base: String, is_stdout: bool) -> Self {
-        let mut messages = Vec::new();
-        if let Some(p) = options.system_prompt.clone() {
-            messages.push(Message {
-                role: "system".to_string(),
-                content: p,
-            });
-        }
-
         Self {
             options,
             api_key,
             api_base,
             is_stdout,
-            messages,
+            messages: Vec::new(),
             spinner: None,
         }
     }
@@ -134,6 +128,13 @@ impl Session {
 
     pub async fn run_one_shot(&mut self) -> Result<()> {
         let prompt = self.options.prompt.join(" ");
+
+        if let Some(system_prompt) = &self.options.system_prompt {
+            self.messages.push(Message {
+                role: "system".to_string(),
+                content: system_prompt.clone(),
+            });
+        }
 
         self.messages.push(Message {
             role: "user".to_string(),
@@ -155,34 +156,31 @@ impl Session {
         };
         let _ = rl.load_history(&history_file);
 
-        loop {
-            let readline = rl.readline(&format!("{} => ", style("user").bold().cyan()));
-            let prompt = match readline {
-                Ok(line) => {
-                    if line.is_empty() {
-                        continue; // ignore empty input
-                    }
-                    rl.add_history_entry(line.as_str())?;
-                    line
-                }
-                Err(ReadlineError::Interrupted) => {
-                    println!("CTRL-C");
-                    break;
-                }
-                Err(ReadlineError::Eof) => {
-                    println!("CTRL-D");
-                    break;
-                }
-                Err(err) => {
-                    bail!("Readline error: {:?}", err);
+        // If `--system` or `--system="..."` is specified
+        if let Some(s) = &self.options.system_prompt {
+            let system_prompt = if !s.is_empty() {
+                // If `--system="..."` is specified, use it as system prompt
+                s.clone()
+            } else {
+                // Otherwise, read system prompt interactively
+                if let Some(p) = self.read_prompt(&mut rl, "system").await? {
+                    p
+                } else {
+                    return Ok(());
                 }
             };
+            self.messages.push(Message {
+                role: "system".to_string(),
+                content: system_prompt,
+            });
+        };
 
-            if prompt.starts_with("\\") {
-                let cmd = &prompt[1..];
-                self.run_command(cmd);
-                continue;
-            }
+        loop {
+            let prompt = if let Some(p) = self.read_prompt(&mut rl, "user").await? {
+                p
+            } else {
+                break;
+            };
 
             self.messages.push(Message {
                 role: "user".to_string(),
@@ -201,6 +199,47 @@ impl Session {
 
         rl.append_history(&history_file)?;
         Ok(())
+    }
+
+    async fn read_prompt<H, I>(
+        &mut self,
+        rl: &mut Editor<H, I>,
+        role: &str,
+    ) -> Result<Option<String>>
+    where
+        H: rustyline::Helper,
+        I: rustyline::history::History,
+    {
+        loop {
+            let readline = rl.readline(&format!("{} => ", style(role).bold().cyan()));
+            match readline {
+                Ok(line) => {
+                    if line.is_empty() {
+                        continue; // ignore empty input
+                    }
+                    rl.add_history_entry(line.as_str())?;
+
+                    if line.starts_with("\\") {
+                        let cmd = &line[1..];
+                        self.run_command(cmd);
+                        continue;
+                    } else {
+                        return Ok(Some(line));
+                    }
+                }
+                Err(ReadlineError::Interrupted) => {
+                    println!("CTRL-C");
+                    return Ok(None);
+                }
+                Err(ReadlineError::Eof) => {
+                    println!("CTRL-D");
+                    return Ok(None);
+                }
+                Err(err) => {
+                    bail!("Readline error: {:?}", err);
+                }
+            };
+        }
     }
 
     /// Complete the message sequence and returns the next message.
