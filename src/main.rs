@@ -54,7 +54,7 @@ We generally recommend altering this or temperature but not both."#
         require_equals = true,
         long_help = "System prompt passed to chatgpt."
     )]
-    pub system_prompt: Option<String>,
+    pub system: Option<String>,
 
     /// The prompt to ask. Leave it empty to activate interactive mode
     pub prompt: Vec<String>,
@@ -129,7 +129,7 @@ impl Session {
     pub async fn run_one_shot(&mut self) -> Result<()> {
         let prompt = self.options.prompt.join(" ");
 
-        if let Some(system_prompt) = &self.options.system_prompt {
+        if let Some(system_prompt) = &self.options.system {
             self.messages.push(Message {
                 role: "system".to_string(),
                 content: system_prompt.clone(),
@@ -157,7 +157,7 @@ impl Session {
         let _ = rl.load_history(&history_file);
 
         // If `--system` or `--system="..."` is specified
-        if let Some(s) = &self.options.system_prompt {
+        if let Some(s) = &self.options.system {
             let system_prompt = if !s.is_empty() {
                 // If `--system="..."` is specified, use it as system prompt
                 s.clone()
