@@ -219,8 +219,7 @@ impl Session {
                     }
                     rl.add_history_entry(line.as_str())?;
 
-                    if line.starts_with("\\") {
-                        let cmd = &line[1..];
+                    if let Some(cmd) = line.strip_prefix('\\') {
                         self.run_command(cmd);
                         continue;
                     } else {
@@ -309,7 +308,7 @@ impl Session {
                     }
                     if let Some(mut content) = delta.content {
                         // Trick: Sometimes the response starts with a newline. Strip it here.
-                        if content.starts_with("\n") && full_message.content.is_empty() {
+                        if content.starts_with('\n') && full_message.content.is_empty() {
                             content = content.trim_start().to_owned();
                         }
                         print!("{}", content);
@@ -346,7 +345,7 @@ impl Session {
         let mut message = response.choices[0].message.clone();
 
         // Trick: Sometimes the response starts with a newline. Strip it here.
-        if message.content.starts_with("\n") {
+        if message.content.starts_with('\n') {
             message.content = message.content.trim_start().to_owned();
         }
 
