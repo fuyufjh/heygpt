@@ -3,14 +3,16 @@ use clap::Parser;
 use console::style;
 use futures::stream::StreamExt;
 use log::{debug, trace};
+use repl_helper::ReplHelper;
 use reqwest::header::{HeaderMap, AUTHORIZATION};
 use reqwest::{Client, RequestBuilder, StatusCode};
 use reqwest_eventsource::{Event, EventSource};
 use rustyline::error::ReadlineError;
-use rustyline::{DefaultEditor, Editor};
+use rustyline::Editor;
 use std::io::Write;
 
 mod model;
+mod repl_helper;
 mod spinner;
 
 use model::*;
@@ -146,7 +148,8 @@ impl Session {
     }
 
     pub async fn run_interactive(&mut self) -> Result<()> {
-        let mut rl = DefaultEditor::new()?;
+        let mut rl = Editor::<repl_helper::ReplHelper, _>::new()?;
+        rl.set_helper(Some(ReplHelper::default()));
 
         // Persist input history in `$HOME/.heygpt_history`
         let history_file = {
@@ -211,7 +214,7 @@ impl Session {
         I: rustyline::history::History,
     {
         loop {
-            let readline = rl.readline(&format!("{} => ", style(role).bold().cyan()));
+            let readline = rl.readline(&format!("{} => ", role));
             match readline {
                 Ok(line) => {
                     if line.is_empty() {
