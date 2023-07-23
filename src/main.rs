@@ -148,11 +148,17 @@ impl Session {
 
     pub fn is_interactive(&self) -> bool {
         // Enter interactive mode if prompt is empty
-        self.options.prompt.is_empty()
+        self.options.prompt.is_empty() && self.is_stdout
     }
 
     pub async fn run_one_shot(&mut self) -> Result<()> {
-        let prompt = self.options.prompt.join(" ");
+        let prompt = if !self.options.prompt.is_empty() {
+            self.options.prompt.join(" ")
+        } else if !self.is_stdout {
+            std::io::read_to_string(std::io::stdin())?
+        } else {
+            bail!("Prompt is required")
+        };
 
         if let Some(system_prompt) = &self.options.system {
             self.messages.push(Message {
