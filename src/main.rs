@@ -23,8 +23,8 @@ use spinner::Spinner;
 #[command(about, long_about = None, trailing_var_arg=true)]
 struct Options {
     /// Whether to use streaming API
-    #[arg(long)]
-    pub no_stream: bool,
+    #[arg(long, default_value_t = true)]
+    pub stream: bool,
 
     /// The model to query
     #[arg(long, default_value_t = String::from("gpt-3.5-turbo"))]
@@ -256,7 +256,7 @@ impl Session {
         // Build the request
         let data = Request {
             model: self.options.model.clone(),
-            stream: !self.options.no_stream,
+            stream: self.options.stream,
             messages: self.messages.to_vec(),
             temperature: self.options.temperature,
             top_p: self.options.top_p,
@@ -281,7 +281,7 @@ impl Session {
             self.spinner = Some(Spinner::new());
         }
 
-        if !self.options.no_stream {
+        if self.options.stream {
             self.do_stream_request(req).await
         } else {
             self.do_non_stream_request(req).await
