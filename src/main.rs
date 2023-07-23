@@ -34,6 +34,25 @@ struct Options {
     #[arg(long)]
     pub model: String,
 
+    /// OpenAI API key
+    #[arg(
+        long,
+        hide_short_help = true,
+        env = "OPENAI_API_KEY",
+        hide_env_values = true
+    )]
+    pub api_key: String,
+
+    /// OpenAI API base URL
+    #[default(String::from("https://api.openai.com/v1"))]
+    #[arg(
+        long,
+        hide_short_help = true,
+        env = "OPENAI_API_BASE",
+        hide_env_values = true
+    )]
+    pub api_base_url: String,
+
     /// Sampling temperature to use, between 0 and 2.
     #[arg(
         long,
@@ -69,11 +88,7 @@ We generally recommend altering this or temperature but not both."#
 }
 
 const CONFIG_FILE: &str = ".heygpt.toml";
-
 const READLINE_HISTORY: &str = ".heygpt_history";
-
-const OPENAI_API_KEY: &str = "OPENAI_API_KEY";
-const OPENAI_API_BASE: &str = "OPENAI_API_BASE";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -91,15 +106,13 @@ async fn main() -> Result<()> {
 
     debug!("Final options: {:?}", &options);
 
-    // get OPENAI_API_KEY from environment variable
-    let api_key =
-        std::env::var(OPENAI_API_KEY).map_err(|_| anyhow!("{} not set", OPENAI_API_KEY))?;
-
-    let api_base = std::env::var(OPENAI_API_BASE).unwrap_or("https://api.openai.com/v1".into());
+    if options.api_key.is_empty() {
+        bail!("OpenAI API key is required. Please set it via OPENAI_API_KEY environment variable or config file `$HOME/.heygpt.toml`.");
+    }
 
     let is_stdout = atty::is(atty::Stream::Stdout);
 
-    let mut session = Session::new(options, api_key, api_base, is_stdout);
+    let mut session = Session::new(options, is_stdout);
     if !session.is_interactive() {
         session.run_one_shot().await?;
     } else {
@@ -113,12 +126,6 @@ struct Session {
     /// Command-line options
     options: Options,
 
-    /// OpenAI API key
-    api_key: String,
-
-    /// OpenAI API base URL
-    api_base: String,
-
     /// Messages history
     messages: Vec<Message>,
 
@@ -130,11 +137,9 @@ struct Session {
 }
 
 impl Session {
-    pub fn new(options: Options, api_key: String, api_base: String, is_stdout: bool) -> Self {
+    pub fn new(options: Options, is_stdout: bool) -> Self {
         Self {
             options,
-            api_key,
-            api_base,
             is_stdout,
             messages: Vec::new(),
             spinner: None,
@@ -283,12 +288,12 @@ impl Session {
         let mut headers = HeaderMap::new();
         headers.insert(
             AUTHORIZATION,
-            format!("Bearer {}", self.api_key).parse().unwrap(),
+            format!("Bearer {}", self.options.api_key).parse().unwrap(),
         );
 
         let client = Client::new();
         let req = client
-            .post(format!("{}/chat/completions", &self.api_base))
+            .post(format!("{}/chat/completions", &self.options.api_base_url))
             .headers(headers)
             .json(&data);
 
