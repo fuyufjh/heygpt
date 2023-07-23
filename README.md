@@ -49,14 +49,27 @@ heygpt read the code and tell me what it is doing: $(cat src/main.rs)
 heygpt read the code diff and write a commit message: $(git diff)
 ```
 
-You may need write prompt in multiple lines:
-
 ```bash
 heygpt "please translate this poem to English:
 > 床前明月光，
 > 疑是地上霜。
 > 举头望明月，
 > 低头思故乡。"
+```
+
+You may even compose `heygpt` with other CLI tools via pipes:
+
+```
+$ echo "It's late. I should go to bed" | heygpt | cowsay
+ ______________________________________
+/ Goodnight! Sleep well and have sweet \
+\ dreams.                              /
+ --------------------------------------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||
 ```
 
 ## Advanced
