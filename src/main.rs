@@ -1,5 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
+use clap_serde_derive::serde::Serialize;
+use clap_serde_derive::ClapSerde;
 use console::style;
 use futures::stream::StreamExt;
 use log::{debug, trace};
@@ -19,15 +21,17 @@ use model::*;
 use spinner::Spinner;
 
 /// Command-line options
-#[derive(Parser, Debug)]
+#[derive(Parser, ClapSerde, Debug, Serialize)]
 #[command(about, long_about = None, trailing_var_arg=true)]
 struct Options {
     /// Whether to use streaming API
-    #[arg(long, default_value_t = true)]
+    #[default(true)]
+    #[arg(long)]
     pub stream: bool,
 
     /// The model to query
-    #[arg(long, default_value_t = String::from("gpt-3.5-turbo"))]
+    #[default(String::from("gpt-3.5-turbo"))]
+    #[arg(long)]
     pub model: String,
 
     /// Sampling temperature to use, between 0 and 2.
@@ -56,11 +60,15 @@ We generally recommend altering this or temperature but not both."#
         require_equals = true,
         long_help = "System prompt passed to ChatGPT."
     )]
+    #[serde(skip_deserializing)]
     pub system: Option<String>,
 
     /// The prompt to ask. Leave it empty to activate interactive mode
+    #[serde(skip_deserializing)]
     pub prompt: Vec<String>,
 }
+
+const CONFIG_FILE: &str = ".heygpt.toml";
 
 const READLINE_HISTORY: &str = ".heygpt_history";
 
@@ -71,7 +79,17 @@ const OPENAI_API_BASE: &str = "OPENAI_API_BASE";
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let options = Options::parse();
+    let config_file_path = dirs::home_dir().unwrap().join(CONFIG_FILE);
+    let options = if config_file_path.exists() {
+        let config_file = std::fs::read_to_string(&config_file_path)?;
+        let options = toml::from_str::<<Options as ClapSerde>::Opt>(&config_file)?;
+        debug!("Loaded config file: {}", &config_file);
+        Options::from(options).merge_clap()
+    } else {
+        Options::parse()
+    };
+
+    debug!("Final options: {:?}", &options);
 
     // get OPENAI_API_KEY from environment variable
     let api_key =
