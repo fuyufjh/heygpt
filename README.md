@@ -6,7 +6,7 @@ A simple common-line interface for [ChatGPT API](https://platform.openai.com/doc
 - 💡 One-shot mode to get a quick answer
 - 🤖 Interactive mode to have a conversation
 
-<img width="1022" alt="screenshot" src="https://user-images.githubusercontent.com/10192522/223295925-00eed881-cdfc-4f46-9510-1e0bd1c99e60.png">
+<img width="986" alt="screenshot" src="https://github.com/fuyufjh/heygpt/assets/10192522/68ee10a1-942d-47b1-8d13-2d5cef70b649">
 
 **[Demo (YouTube)](https://youtu.be/Edqts2ff1Y0)**
 
