@@ -1,6 +1,6 @@
 # `heygpt`
 
-A simple common-line interface for [ChatGPT API](https://platform.openai.com/docs/api-reference/chat/create).
+A simple command-line interface for [ChatGPT API](https://platform.openai.com/docs/api-reference/chat/create).
 
 - 🌟 Streaming output!
 - 💡 One-shot mode to get a quick answer
