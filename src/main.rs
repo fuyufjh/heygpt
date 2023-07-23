@@ -24,12 +24,12 @@ use spinner::Spinner;
 #[derive(Parser, ClapSerde, Debug, Serialize)]
 #[command(about, long_about = None, trailing_var_arg=true)]
 struct Options {
-    /// Whether to use streaming API
+    /// Whether to use streaming API (default: true)
     #[default(true)]
-    #[arg(long)]
+    #[arg(long, hide_possible_values = true)]
     pub stream: bool,
 
-    /// The model to query
+    /// The model to query (default: gpt-3.5-turbo)
     #[default(String::from("gpt-3.5-turbo"))]
     #[arg(long)]
     pub model: String,
