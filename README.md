@@ -72,3 +72,13 @@ Available commands:
   \b, \back: Retract and back to the last user message
   \h, \history: View current conversation history
 ```
+
+### Configuration file
+
+`heygpt` will load configurations from `$HOME/.heygpt.toml`. You may also set API keys and base URL here. Example:
+
+```toml
+model = "gpt-4"
+api_base_url = "https://some.openai.mirror/v1"
+api_key = "your api key"
+```
