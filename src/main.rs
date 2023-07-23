@@ -8,7 +8,7 @@ use reqwest::header::{HeaderMap, AUTHORIZATION};
 use reqwest::{Client, RequestBuilder, StatusCode};
 use reqwest_eventsource::{Event, EventSource};
 use rustyline::error::ReadlineError;
-use rustyline::Editor;
+use rustyline::{Cmd, Editor, EventHandler, KeyCode, KeyEvent, Modifiers};
 use std::io::Write;
 
 mod model;
@@ -150,6 +150,12 @@ impl Session {
     pub async fn run_interactive(&mut self) -> Result<()> {
         let mut rl = Editor::<repl_helper::ReplHelper, _>::new()?;
         rl.set_helper(Some(ReplHelper::default()));
+
+        // Bind CTRL-J to newline
+        rl.bind_sequence(
+            KeyEvent(KeyCode::Char('j'), Modifiers::CTRL),
+            EventHandler::Simple(Cmd::Newline),
+        );
 
         // Persist input history in `$HOME/.heygpt_history`
         let history_file = {
@@ -368,6 +374,7 @@ impl Session {
                 println!("  \\?, \\help     Show this help");
                 println!("  \\b, \\back     Retract and back to the last user message");
                 println!("  \\h, \\history  View current conversation history");
+                println!("Hint: Press Ctrl-J to input newline");
             }
             "b" | "back" => match self.retract() {
                 Ok(()) => println!("Retracted last message"),
