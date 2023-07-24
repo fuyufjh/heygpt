@@ -111,8 +111,9 @@ async fn main() -> Result<()> {
     }
 
     let is_stdout = atty::is(atty::Stream::Stdout);
+    let is_stdin = atty::is(atty::Stream::Stdin);
 
-    let mut session = Session::new(options, is_stdout);
+    let mut session = Session::new(options, is_stdin, is_stdout);
     if !session.is_interactive() {
         session.run_one_shot().await?;
     } else {
@@ -129,7 +130,10 @@ struct Session {
     /// Messages history
     messages: Vec<Message>,
 
-    /// Whether stdout is a TTY
+    /// Whether input from stdin
+    is_stdin: bool,
+
+    /// Whether output to stdout
     is_stdout: bool,
 
     /// Spinner holder
@@ -137,9 +141,10 @@ struct Session {
 }
 
 impl Session {
-    pub fn new(options: Options, is_stdout: bool) -> Self {
+    pub fn new(options: Options, is_stdin: bool, is_stdout: bool) -> Self {
         Self {
             options,
+            is_stdin,
             is_stdout,
             messages: Vec::new(),
             spinner: None,
@@ -147,14 +152,14 @@ impl Session {
     }
 
     pub fn is_interactive(&self) -> bool {
-        // Enter interactive mode if prompt is empty
-        self.options.prompt.is_empty() && self.is_stdout
+        // Enter interactive mode if prompt is empty and no redirection
+        self.options.prompt.is_empty() && self.is_stdout && self.is_stdin
     }
 
     pub async fn run_one_shot(&mut self) -> Result<()> {
         let prompt = if !self.options.prompt.is_empty() {
             self.options.prompt.join(" ")
-        } else if !self.is_stdout {
+        } else if !self.is_stdin {
             std::io::read_to_string(std::io::stdin())?
         } else {
             bail!("Prompt is required")
