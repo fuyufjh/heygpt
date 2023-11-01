@@ -2,7 +2,7 @@
 name = "heygpt"
 description = "A simple CLI tool that uses ChatGPT API to respond to messages"
 authors = ["Eric Fu"]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/fuyufjh/heygpt"
@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 reqwest = { version = "0.11", features = ["json"] }
-reqwest-eventsource = "0.4"
+reqwest-eventsource = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.26", features = ["macros"] }
@@ -28,4 +28,4 @@ env_logger = "0.10"
 spinners = "4.1"
 atty = "0.2"
 clap-serde-derive = "0.2"
-toml = "0.7"
+toml = "0.8"
