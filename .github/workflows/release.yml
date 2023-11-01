@@ -11,11 +11,14 @@ jobs:
       matrix:
         include:
           - target: x86_64-pc-windows-gnu
-            archive: zip
+            archive_type: zip
+            archive_name: heygpt_win64
           - target: x86_64-unknown-linux-musl
-            archive: tar.gz
+            archive_type: tar.gz
+            archive_name: heygpt_linux
           - target: x86_64-apple-darwin
-            archive: zip
+            archive_type: zip
+            archive_name: heygpt_macos
     steps:
       - uses: actions/checkout@master
       - name: Compile and release
@@ -24,4 +27,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           RUSTTARGET: ${{ matrix.target }}
-          ARCHIVE_TYPES: ${{ matrix.archive }}
+          ARCHIVE_TYPES: ${{ matrix.archive_type }}
+          ARCHIVE_NAME: ${{ matrix.archive_name }}
